@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rock Hero 3D - Rhythm Game</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            overflow: hidden;
+            background-color: #05050a;
+            user-select: none;
+        }
+        .font-arcade {
+            font-family: 'Orbitron', sans-serif;
+        }
+        .neon-glow-green { text-shadow: 0 0 10px #10b981, 0 0 20px #10b981; }
+        .neon-glow-red { text-shadow: 0 0 10px #ef4444, 0 0 20px #ef4444; }
+        .neon-glow-yellow { text-shadow: 0 0 10px #f59e0b, 0 0 20px #f59e0b; }
+        .neon-glow-blue { text-shadow: 0 0 10px #3b82f6, 0 0 20px #3b82f6; }
+        .neon-glow-orange { text-shadow: 0 0 10px #f97316, 0 0 20px #f97316; }
+        
+        @keyframes pulse-fast {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.08); opacity: 0.8; }
+        }
+        .animate-pulse-fast {
+            animation: pulse-fast 0.2s infinite;
+        }
+        
+        @keyframes float-up {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-60px) scale(1.2); opacity: 0; }
+        }
+        .floating-text {
+            animation: float-up 0.6s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen text-white">
+
+    <!-- Three.js Canvas Container -->
+    <div id="canvas-container" class="absolute inset-0 z-0"></div>
+
+    <!-- UI Overlay Layer -->
+    <div id="ui-layer" class="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between p-6">
+        
+        <!-- Top Bar: Score & Stats -->
+        <header id="hud-top" class="flex justify-between items-start opacity-0 transition-opacity duration-500">
+            <div class="bg-black/60 backdrop-blur-md border border-cyan-500/40 rounded-2xl p-4 shadow-2xl flex flex-col min-w-[200px]">
+                <span class="text-xs text-cyan-400 font-arcade tracking-widest uppercase">Score</span>
+                <span id="score-display" class="text-4xl font-black font-arcade text-white">000000</span>
+            </div>
+
+            <!-- Rock Meter / Health Bar -->
+            <div class="flex flex-col items-center bg-black/60 backdrop-blur-md border border-purple-500/40 rounded-2xl p-4 shadow-2xl w-72">
+                <div class="flex justify-between w-full text-xs font-arcade text-purple-300 mb-1">
+                    <span>ROCK METER</span>
+                    <span id="multiplier-display">1x MULTIPLIER</span>
+                </div>
+                <div class="w-full bg-gray-800 rounded-full h-3 overflow-hidden border border-purple-500/30">
+                    <div id="health-bar" class="bg-gradient-to-r from-red-500 via-yellow-400 to-green-400 h-full w-3/4 transition-all duration-300"></div>
+                </div>
+            </div>
+
+            <div class="bg-black/60 backdrop-blur-md border border-pink-500/40 rounded-2xl p-4 shadow-2xl flex flex-col items-end min-w-[180px]">
+                <span class="text-xs text-pink-400 font-arcade tracking-widest uppercase">Combo</span>
+                <div class="flex items-baseline space-x-2">
+                    <span id="combo-display" class="text-4xl font-black font-arcade text-pink-400">0</span>
+                    <span class="text-xs text-gray-400 font-arcade">STREAK</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Center Floating Feedback Area -->
+        <div id="feedback-container" class="relative flex-grow flex items-center justify-center pointer-events-none">
+            <!-- Dynamic hit feedback (PERFECT, GOOD, MISS) will spawn here -->
+        </div>
+
+        <!-- Bottom Bar / Lane Indicators UI (for visual sync) -->
+        <footer id="hud-bottom" class="flex justify-between items-end opacity-0 transition-opacity duration-500 pb-4 px-4">
+            <!-- Speed Selector Control during gameplay -->
+            <div class="bg-black/60 backdrop-blur-md border border-white/10 p-2 rounded-xl flex items-center space-x-2">
+                <span class="text-xs font-arcade text-cyan-400 pl-1">VELOCIDADE:</span>
+                <select id="in-game-speed-select" class="bg-gray-800 text-white font-arcade text-xs rounded p-1 border border-cyan-500/40 focus:outline-none cursor-pointer">
+                    <option value="0.35">0.35x Muito Devagar</option>
+                    <option value="0.5" selected>0.5x Super Tranquilo</option>
+                    <option value="0.75">0.75x Moderate</option>
+                    <option value="1.0">1.0x Normal</option>
+                </select>
+            </div>
+
+            <!-- 5 Key indicators (A, S, D, F, G) -->
+            <div class="flex space-x-3 bg-black/40 backdrop-blur-sm p-3 rounded-2xl border border-white/10">
+                <div class="flex flex-col items-center">
+                    <span class="text-xs text-emerald-400 font-arcade font-bold mb-1">[ A ]</span>
+                    <div id="key-0" class="w-12 h-5 rounded-full bg-emerald-500/40 border-2 border-emerald-400 transition-all duration-75"></div>
+                </div>
+                <div class="flex flex-col items-center">
+                    <span class="text-xs text-red-400 font-arcade font-bold mb-1">[ S ]</span>
+                    <div id="key-1" class="w-12 h-5 rounded-full bg-red-500/40 border-2 border-red-400 transition-all duration-75"></div>
+                </div>
+                <div class="flex flex-col items-center">
+                    <span class="text-xs text-yellow-400 font-arcade font-bold mb-1">[ D ]</span>
+                    <div id="key-2" class="w-12 h-5 rounded-full bg-yellow-500/40 border-2 border-yellow-400 transition-all duration-75"></div>
+                </div>
+                <div class="flex flex-col items-center">
+                    <span class="text-xs text-blue-400 font-arcade font-bold mb-1">[ F ]</span>
+                    <div id="key-3" class="w-12 h-5 rounded-full bg-blue-500/40 border-2 border-blue-400 transition-all duration-75"></div>
+                </div>
+                <div class="flex flex-col items-center">
+                    <span class="text-xs text-orange-400 font-arcade font-bold mb-1">[ G ]</span>
+                    <div id="key-4" class="w-12 h-5 rounded-full bg-orange-500/40 border-2 border-orange-400 transition-all duration-75"></div>
+                </div>
+            </div>
+
+            <div class="w-24"></div> <!-- Spacer for symmetry -->
+        </footer>
+    </div>
+
+    <!-- Start Menu Modal -->
+    <div id="start-screen" class="absolute inset-0 z-30 bg-black/85 backdrop-blur-lg flex flex-col items-center justify-center p-6 transition-all duration-700">
+        <div class="max-w-xl w-full bg-gradient-to-b from-gray-900 to-black border-2 border-red-500/50 rounded-3xl p-8 shadow-[0_0_50px_rgba(239,68,68,0.3)] text-center relative overflow-hidden">
+            <div class="absolute -top-24 -left-24 w-48 h-48 bg-red-500/20 rounded-full blur-3xl"></div>
+            <div class="absolute -bottom-24 -right-24 w-48 h-48 bg-yellow-500/20 rounded-full blur-3xl"></div>
+            
+            <h1 class="text-5xl font-black font-arcade bg-gradient-to-r from-red-500 via-yellow-400 to-emerald-400 bg-clip-text text-transparent mb-2 tracking-wider">MARIO HERO 3D</h1>
+            <p class="text-yellow-400/90 tracking-widest font-arcade text-sm mb-6">SUPER MARIO BROS THEME (5 TECLAS)</p>
+            
+            <!-- Speed Selector Setting in Menu -->
+            <div class="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6 flex justify-between items-center">
+                <span class="text-sm font-arcade text-yellow-400">VELOCIDADE:</span>
+                <select id="menu-speed-select" class="bg-gray-800 text-white font-arcade text-sm rounded-xl px-3 py-2 border border-yellow-500/50 focus:outline-none cursor-pointer">
+                    <option value="0.35">0.35x (MUITO LENTO)</option>
+                    <option value="0.5" selected>0.5x (SUPER TRANQUILO / RECOMENDADO)</option>
+                    <option value="0.75">0.75x (MODERADO)</option>
+                    <option value="1.0">1.0x (NORMAL)</option>
+                </select>
+            </div>
+
+            <div class="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6 text-left space-y-2">
+                <h3 class="text-yellow-400 font-arcade text-xs tracking-wider mb-2">CONTROLES DO TECLADO:</h3>
+                <div class="grid grid-cols-5 gap-2 text-xs text-center text-gray-300">
+                    <div class="bg-white/10 p-2 rounded border border-emerald-500/40">
+                        <span class="block font-arcade text-emerald-400 font-bold">A</span> Verde
+                    </div>
+                    <div class="bg-white/10 p-2 rounded border border-red-500/40">
+                        <span class="block font-arcade text-red-400 font-bold">S</span> Vermelho
+                    </div>
+                    <div class="bg-white/10 p-2 rounded border border-yellow-500/40">
+                        <span class="block font-arcade text-yellow-400 font-bold">D</span> Amarelo
+                    </div>
+                    <div class="bg-white/10 p-2 rounded border border-blue-500/40">
+                        <span class="block font-arcade text-blue-400 font-bold">F</span> Azul
+                    </div>
+                    <div class="bg-white/10 p-2 rounded border border-orange-500/40">
+                        <span class="block font-arcade text-orange-400 font-bold">G</span> Laranja
+                    </div>
+                </div>
+                <p class="text-xs text-gray-400 mt-2 italic text-center">♫ Tema clássico do Super Mario Bros em velocidade desacelerada!</p>
+            </div>
+
+            <button id="start-btn" class="w-full py-5 bg-gradient-to-r from-red-500 via-yellow-500 to-emerald-500 hover:opacity-90 text-white font-black font-arcade text-xl rounded-2xl shadow-[0_0_25px_rgba(239,68,68,0.5)] transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 cursor-pointer">
+                JOGAR SUPER MARIO THEME
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Over / Victory Modal -->
+    <div id="game-over-screen" class="absolute inset-0 z-30 bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-6 opacity-0 pointer-events-none transition-all duration-700">
+        <div class="max-w-xl w-full bg-gradient-to-b from-gray-900 to-black border-2 border-pink-500/50 rounded-3xl p-8 shadow-[0_0_60px_rgba(236,72,153,0.4)] text-center">
+            <h2 id="game-over-title" class="text-5xl font-black font-arcade text-pink-500 mb-2">SONG COMPLETE!</h2>
+            <p id="game-over-subtitle" class="text-gray-400 font-arcade text-sm mb-8">Here is your performance breakdown</p>
+
+            <div class="grid grid-cols-2 gap-4 mb-8">
+                <div class="bg-white/5 border border-white/10 rounded-2xl p-4">
+                    <span class="text-xs text-cyan-400 font-arcade">FINAL SCORE</span>
+                    <div id="final-score" class="text-3xl font-black font-arcade text-white mt-1">0</div>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-2xl p-4">
+                    <span class="text-xs text-pink-400 font-arcade">MAX COMBO</span>
+                    <div id="final-combo" class="text-3xl font-black font-arcade text-pink-400 mt-1">0</div>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-2xl p-4">
+                    <span class="text-xs text-emerald-400 font-arcade">NOTES HIT</span>
+                    <div id="final-hits" class="text-3xl font-black font-arcade text-emerald-400 mt-1">0</div>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-2xl p-4">
+                    <span class="text-xs text-red-400 font-arcade">NOTES MISSED</span>
+                    <div id="final-misses" class="text-3xl font-black font-arcade text-red-400 mt-1">0</div>
+                </div>
+            </div>
+
+            <button id="restart-btn" class="w-full py-5 bg-gradient-to-r from-pink-500 via-purple-600 to-cyan-500 hover:opacity-90 text-white font-black font-arcade text-xl rounded-2xl shadow-[0_0_25px_rgba(236,72,153,0.5)] transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 cursor-pointer">
+                PLAY AGAIN
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Game Logic Script -->
+    <script>
+        // --- CONSTANTS & CONFIGURATION ---
+        // Restored to 5 LANES (A, S, D, F, G)
+        const LANES = [
+            { x: -2.0, color: 0x10b981, key: 'KeyA', name: 'A', gamepadBtn: 0 }, // Green
+            { x: -1.0, color: 0xef4444, key: 'KeyS', name: 'S', gamepadBtn: 1 }, // Red
+            { x:  0.0, color: 0xf59e0b, key: 'KeyD', name: 'D', gamepadBtn: 2 }, // Yellow
+            { x:  1.0, color: 0x3b82f6, key: 'KeyF', name: 'F', gamepadBtn: 3 }, // Blue
+            { x:  2.0, color: 0xf97316, key: 'KeyG', name: 'G', gamepadBtn: 4 }  // Orange
+        ];
+        
+        const FRET_Z = 4.0;      // Target hit line Z coordinate
+        const SPAWN_Z = -60.0;   // Note spawn Z coordinate
+        
+        let speedMultiplier = 0.5; // Slower speed default
+        const BASE_NOTE_SPEED = 12.0; 
+        let NOTE_SPEED = BASE_NOTE_SPEED * speedMultiplier;
+
+        // --- GAME STATE ---
+        let gameState = 'START';
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let multiplier = 1;
+        let health = 80;
+        let notesHitCount = 0;
+        let notesMissedCount = 0;
+        let songTime = 0;
+        let songDuration = 55.0; 
+        let clock = new THREE.Clock();
+        let chart = [];
+        let activeNotes = [];
+        let hitPads = [];
+
+        // --- AUDIO SYSTEM (Super Mario Bros Main Theme Synthesizer) ---
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // Frequencies for Mario Notes
+        const NOTES = {
+            E5: 659.25, C5: 523.25, G5: 783.99, G4: 392.00,
+            A4: 440.00, B4: 493.88, A4S: 466.16, F5: 698.46,
+            D5: 587.33, E4: 329.63, F4: 349.23
+        };
+
+        // Super Mario Bros Theme Sequence mapped across 5 Lanes
+        const MARIO_THEME_PATTERN = [
+            { note: NOTES.E5, duration: 0.18, lane: 0 },
+            { note: NOTES.E5, duration: 0.18, lane: 0 },
+            { note: 0,        duration: 0.18, lane: -1 },
+            { note: NOTES.E5, duration: 0.18, lane: 1 },
+            { note: 0,        duration: 0.18, lane: -1 },
+            { note: NOTES.C5, duration: 0.18, lane: 0 },
+            { note: NOTES.E5, duration: 0.35, lane: 2 },
+            { note: NOTES.G5, duration: 0.40, lane: 4 },
+            { note: 0,        duration: 0.40, lane: -1 },
+            { note: NOTES.G4, duration: 0.40, lane: 0 },
+            { note: 0,        duration: 0.40, lane: -1 },
+            // Chorus Phrase
+            { note: NOTES.C5, duration: 0.30, lane: 1 },
+            { note: 0,        duration: 0.20, lane: -1 },
+            { note: NOTES.G4, duration: 0.30, lane: 0 },
+            { note: 0,        duration: 0.20, lane: -1 },
+            { note: NOTES.E4, duration: 0.30, lane: 2 },
+            { note: 0,        duration: 0.20, lane: -1 },
+            { note: NOTES.A4, duration: 0.25, lane: 3 },
+            { note: NOTES.B4, duration: 0.25, lane: 4 },
+            { note: NOTES.A4S,duration: 0.25, lane: 3 },
+            { note: NOTES.A4, duration: 0.25, lane: 2 },
+            { note: NOTES.G4, duration: 0.30, lane: 1 },
+            { note: NOTES.E5, duration: 0.25, lane: 0 },
+            { note: NOTES.G5, duration: 0.25, lane: 4 },
+            { note: NOTES.A5, duration: 0.30, lane: 3 },
+            { note: NOTES.F5, duration: 0.25, lane: 2 },
+            { note: NOTES.G5, duration: 0.25, lane: 1 }
+        ];
+
+        function playNoteAudio(freq, duration = 0.18) {
+            if (!audioCtx || freq === 0) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function playHitSound(laneIndex) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(987.77, audioCtx.currentTime); 
+            osc.frequency.setValueAtTime(1318.51, audioCtx.currentTime + 0.08);
+
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.3);
+        }
+
+        function playMissSound() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.2);
+
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.2);
+        }
+
+        // --- THREE.JS SCENE SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x05050a, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 5.5, 9.5);
+        camera.lookAt(0, 0, -5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(0, 20, 10);
+        scene.add(dirLight);
+
+        LANES.forEach((lane) => {
+            const pLight = new THREE.PointLight(lane.color, 2.5, 15);
+            pLight.position.set(lane.x, 3, FRET_Z);
+            scene.add(pLight);
+        });
+
+        // Fretboard Mesh (Wider for 5 Lanes)
+        const boardWidth = 5.6;
+        const boardLength = 80;
+        
+        const boardGeo = new THREE.PlaneGeometry(boardWidth, boardLength, 10, 40);
+        const boardMat = new THREE.MeshStandardMaterial({
+            color: 0x0a0a12,
+            roughness: 0.2,
+            metalness: 0.8,
+            emissive: 0x050510
+        });
+        const fretboard = new THREE.Mesh(boardGeo, boardMat);
+        fretboard.rotation.x = -Math.PI / 2 + 0.15;
+        fretboard.position.set(0, -0.5, -boardLength / 2 + FRET_Z);
+        scene.add(fretboard);
+
+        // Lane Divider Lines
+        for (let i = -1.5; i <= 1.5; i += 1.0) {
+            const lineGeo = new THREE.BoxGeometry(0.04, boardLength, 0.02);
+            const lineMat = new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.3 });
+            const line = new THREE.Mesh(lineGeo, lineMat);
+            line.rotation.x = -Math.PI / 2 + 0.15;
+            line.position.set(i, -0.48, -boardLength / 2 + FRET_Z);
+            scene.add(line);
+        }
+
+        // Hit Pads at Target Z
+        hitPads = [];
+        LANES.forEach((lane) => {
+            const padGeo = new THREE.CylinderGeometry(0.48, 0.48, 0.1, 32);
+            const padMat = new THREE.MeshStandardMaterial({
+                color: lane.color,
+                emissive: lane.color,
+                emissiveIntensity: 0.6,
+                roughness: 0.3
+            });
+            const pad = new THREE.Mesh(padGeo, padMat);
+            pad.position.set(lane.x, -0.4, FRET_Z);
+            scene.add(pad);
+            hitPads.push(pad);
+        });
+
+        // Background Starfield
+        const particleCount = 300;
+        const particleGeo = new THREE.BufferGeometry();
+        const particlePositions = new Float32Array(particleCount * 3);
+        for(let i = 0; i < particleCount * 3; i += 3) {
+            particlePositions[i] = (Math.random() - 0.5) * 60;
+            particlePositions[i+1] = Math.random() * 40 - 5;
+            particlePositions[i+2] = (Math.random() - 0.5) * 100 - 20;
+        }
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+        const particleMat = new THREE.PointsMaterial({ color: 0xf59e0b, size: 0.4, transparent: true, opacity: 0.6 });
+        const particleSystem = new THREE.Points(particleGeo, particleMat);
+        scene.add(particleSystem);
+
+        // --- MARIO CHART GENERATOR ---
+        function generateMarioChart() {
+            chart = [];
+            let currentTime = 2.5;
+            
+            while (currentTime < songDuration - 3.0) {
+                for (let step of MARIO_THEME_PATTERN) {
+                    if (step.lane >= 0) {
+                        chart.push({
+                            time: currentTime,
+                            lane: step.lane,
+                            noteFreq: step.note,
+                            duration: step.duration,
+                            hit: false,
+                            missed: false,
+                            mesh: null
+                        });
+                    }
+                    currentTime += step.duration * 1.6; // Spaced out for slow pace
+                }
+            }
+        }
+
+        // Sync speed selector UI
+        const menuSpeedSelect = document.getElementById('menu-speed-select');
+        const inGameSpeedSelect = document.getElementById('in-game-speed-select');
+
+        function setGameSpeed(val) {
+            speedMultiplier = parseFloat(val);
+            NOTE_SPEED = BASE_NOTE_SPEED * speedMultiplier;
+            if (menuSpeedSelect) menuSpeedSelect.value = val;
+            if (inGameSpeedSelect) inGameSpeedSelect.value = val;
+        }
+
+        menuSpeedSelect.addEventListener('change', (e) => setGameSpeed(e.target.value));
+        inGameSpeedSelect.addEventListener('change', (e) => setGameSpeed(e.target.value));
+
+        // --- GAMEPLAY MECHANICS ---
+        function startGame() {
+            initAudio();
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            multiplier = 1;
+            health = 80;
+            notesHitCount = 0;
+            notesMissedCount = 0;
+            songTime = 0;
+            activeNotes.forEach(n => { if (n.mesh) scene.remove(n.mesh); });
+            activeNotes = [];
+
+            generateMarioChart();
+
+            document.getElementById('start-screen').classList.add('opacity-0', 'pointer-events-none');
+            document.getElementById('game-over-screen').classList.add('opacity-0', 'pointer-events-none');
+            document.getElementById('hud-top').classList.remove('opacity-0');
+            document.getElementById('hud-bottom').classList.remove('opacity-0');
+
+            gameState = 'PLAYING';
+            clock.start();
+        }
+
+        function triggerHit(laneIndex) {
+            if (gameState !== 'PLAYING') return;
+
+            // Flash UI key indicator
+            const keyEl = document.getElementById(`key-${laneIndex}`);
+            if (keyEl) {
+                keyEl.classList.add('bg-white', 'scale-125', 'shadow-[0_0_15px_white]');
+                setTimeout(() => {
+                    keyEl.classList.remove('bg-white', 'scale-125', 'shadow-[0_0_15px_white]');
+                }, 120);
+            }
+
+            // Flash Pad
+            if (hitPads[laneIndex]) {
+                hitPads[laneIndex].material.emissiveIntensity = 2.5;
+                hitPads[laneIndex].scale.set(1.2, 1.4, 1.2);
+                setTimeout(() => {
+                    hitPads[laneIndex].material.emissiveIntensity = 0.6;
+                    hitPads[laneIndex].scale.set(1.0, 1.0, 1.0);
+                }, 120);
+            }
+
+            // Find closest active note in this lane
+            let closestNote = null;
+            let minDistance = Infinity;
+
+            for (let note of activeNotes) {
+                if (note.lane === laneIndex && !note.hit && !note.missed) {
+                    const distance = Math.abs(note.mesh.position.z - FRET_Z);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestNote = note;
+                    }
+                }
+            }
+
+            // Forgiving Hit Window
+            if (closestNote && minDistance < 5.0) {
+                closestNote.hit = true;
+                scene.remove(closestNote.mesh);
+                
+                playNoteAudio(closestNote.noteFreq, closestNote.duration);
+                playHitSound(laneIndex);
+
+                let rating = 'GOOD';
+                let pts = 50;
+                if (minDistance < 1.8) {
+                    rating = 'PERFECT';
+                    pts = 100;
+                } else if (minDistance < 3.2) {
+                    rating = 'GREAT';
+                    pts = 75;
+                }
+
+                score += pts * multiplier;
+                combo++;
+                if (combo > maxCombo) maxCombo = combo;
+                notesHitCount++;
+                health = Math.min(100, health + 4);
+
+                if (combo >= 20) multiplier = 4;
+                else if (combo >= 10) multiplier = 3;
+                else if (combo >= 5) multiplier = 2;
+                else multiplier = 1;
+
+                showFloatingFeedback(rating, LANES[laneIndex].x);
+                updateHUD();
+            } else {
+                if (minDistance > 7.0) {
+                    combo = 0;
+                    multiplier = 1;
+                    health = Math.max(0, health - 2);
+                    playMissSound();
+                    updateHUD();
+                }
+            }
+        }
+
+        function triggerMiss(note) {
+            note.missed = true;
+            if (note.mesh) {
+                scene.remove(note.mesh);
+            }
+            combo = 0;
+            multiplier = 1;
+            health = Math.max(0, health - 8);
+            notesMissedCount++;
+            playMissSound();
+            showFloatingFeedback('MISS', LANES[note.lane].x);
+            updateHUD();
+
+            if (health <= 0) {
+                endGame(false);
+            }
+        }
+
+        function showFloatingFeedback(text, laneX) {
+            const container = document.getElementById('feedback-container');
+            const el = document.createElement('div');
+            el.className = 'absolute font-black font-arcade text-2xl floating-text ';
+            
+            if (text === 'PERFECT') {
+                el.className += 'text-cyan-400 neon-glow-green';
+            } else if (text === 'GREAT') {
+                el.className += 'text-emerald-400 neon-glow-green';
+            } else if (text === 'GOOD') {
+                el.className += 'text-amber-400 neon-glow-yellow';
+            } else {
+                el.className += 'text-red-500 neon-glow-red';
+            }
+            
+            el.innerText = text;
+            el.style.transform = `translateX(${laneX * 60}px)`;
+            container.appendChild(el);
+            setTimeout(() => el.remove(), 600);
+        }
+
+        function updateHUD() {
+            document.getElementById('score-display').innerText = String(score).padStart(6, '0');
+            document.getElementById('combo-display').innerText = combo;
+            document.getElementById('multiplier-display').innerText = `${multiplier}x MULTIPLIER`;
+            document.getElementById('health-bar').style.width = `${health}%`;
+        }
+
+        function endGame(victory) {
+            gameState = 'GAMEOVER';
+
+            activeNotes.forEach(n => { if (n.mesh) scene.remove(n.mesh); });
+            activeNotes = [];
+
+            document.getElementById('hud-top').classList.add('opacity-0');
+            document.getElementById('hud-bottom').classList.add('opacity-0');
+
+            const titleEl = document.getElementById('game-over-title');
+            const subEl = document.getElementById('game-over-subtitle');
+            
+            if (victory) {
+                titleEl.innerText = "STAGE CLEAR!";
+                titleEl.className = "text-5xl font-black font-arcade text-yellow-400 mb-2 neon-glow-yellow";
+                subEl.innerText = "Yahoo! Você completou a música do Super Mario Bros!";
+            } else {
+                titleEl.innerText = "GAME OVER!";
+                titleEl.className = "text-5xl font-black font-arcade text-red-500 mb-2 neon-glow-red";
+                subEl.innerText = "Tente novamente para dominar o ritmo do Mario!";
+            }
+
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('final-combo').innerText = maxCombo;
+            document.getElementById('final-hits').innerText = notesHitCount;
+            document.getElementById('final-misses').innerText = notesMissedCount;
+
+            document.getElementById('game-over-screen').classList.remove('opacity-0', 'pointer-events-none');
+        }
+
+        // --- INPUT HANDLING (KEYBOARD & GAMEPAD) ---
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat) return;
+            if (gameState !== 'PLAYING') return;
+
+            LANES.forEach((lane, index) => {
+                if (e.code === lane.key) {
+                    triggerHit(index);
+                }
+            });
+        });
+
+        const prevButtonStates = {};
+
+        function pollGamepads() {
+            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            for (let i = 0; i < gamepads.length; i++) {
+                const gp = gamepads[i];
+                if (!gp) continue;
+
+                if (!prevButtonStates[gp.index]) {
+                    prevButtonStates[gp.index] = {};
+                }
+
+                LANES.forEach((lane, laneIndex) => {
+                    const btnIdx = lane.gamepadBtn;
+                    const button = gp.buttons[btnIdx];
+                    const isPressed = button && (button.pressed || button.value > 0.5);
+                    const wasPressed = prevButtonStates[gp.index][btnIdx] || false;
+
+                    if (isPressed && !wasPressed) {
+                        triggerHit(laneIndex);
+                    }
+                    prevButtonStates[gp.index][btnIdx] = isPressed;
+                });
+            }
+        }
+
+        function spawnNoteMesh(noteItem) {
+            const lane = LANES[noteItem.lane];
+            const geometry = new THREE.CylinderGeometry(0.45, 0.45, 0.22, 24);
+            const material = new THREE.MeshStandardMaterial({
+                color: lane.color,
+                emissive: lane.color,
+                emissiveIntensity: 0.8,
+                metalness: 0.5,
+                roughness: 0.2
+            });
+            
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.rotation.x = Math.PI / 2;
+            mesh.position.set(lane.x, -0.3, SPAWN_Z);
+            
+            const ringGeo = new THREE.TorusGeometry(0.48, 0.06, 12, 32);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+            mesh.add(ringMesh);
+
+            scene.add(mesh);
+            noteItem.mesh = mesh;
+        }
+
+        // Main Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+
+            pollGamepads();
+
+            if (gameState === 'PLAYING') {
+                songTime += delta;
+
+                if (songTime >= songDuration && activeNotes.length === 0) {
+                    endGame(true);
+                }
+
+                const spawnLeadTime = (FRET_Z - SPAWN_Z) / NOTE_SPEED;
+
+                chart.forEach(noteItem => {
+                    if (!noteItem.mesh && !noteItem.hit && !noteItem.missed) {
+                        if (songTime >= noteItem.time - spawnLeadTime) {
+                            spawnNoteMesh(noteItem);
+                            activeNotes.push(noteItem);
+                        }
+                    }
+                });
+
+                for (let i = activeNotes.length - 1; i >= 0; i--) {
+                    const note = activeNotes[i];
+                    if (note.mesh) {
+                        const targetZ = FRET_Z + (songTime - note.time) * NOTE_SPEED;
+                        note.mesh.position.z = targetZ;
+
+                        if (targetZ > FRET_Z + 5.0 && !note.hit && !note.missed) {
+                            triggerMiss(note);
+                            activeNotes.splice(i, 1);
+                        }
+                    }
+                }
+
+                if (particleSystem) {
+                    particleSystem.rotation.y += 0.0008;
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('load', () => {
+            const startBtn = document.getElementById('start-btn');
+            const restartBtn = document.getElementById('restart-btn');
+
+            if (startBtn) {
+                startBtn.addEventListener('click', startGame);
+            }
+            if (restartBtn) {
+                restartBtn.addEventListener('click', startGame);
+            }
+
+            animate();
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
